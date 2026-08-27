@@ -1,58 +1,38 @@
-import { FormEvent, useState } from "react";
-import { login, type LoginResponse } from "../services/authApi";
+import { useState } from "react";
+import { ROLES } from "../../shared/constants";
 import type { UserRole } from "../../shared/constants";
 
-interface Props {
-  onLogin: (auth: {
-    token: string;
-    user: {
-      id: string;
-      username: string;
-      role: UserRole;
-      clientId: string | null;
-    };
-  }) => void;
-  onNavigate?: (path: string) => void;
+interface StoredAuth {
+  token: string;
+  user: {
+    id: string;
+    username: string;
+    role: UserRole;
+    clientId: string | null;
+  };
 }
 
-export default function AdminLoginPage({ onLogin, onNavigate }: Props) {
+interface AdminLoginPageProps {
+  onLogin: (auth: StoredAuth) => void;
+  onNavigate?: (to: string) => void;
+}
+
+export default function AdminLoginPage({
+  onLogin,
+  onNavigate,
+}: AdminLoginPageProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [setupMode, setSetupMode] = useState(false);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError("");
-    setBusy(true);
-
-    try {
-      const result = await login(username, password);
-
-      if (result.user.role !== "admin") {
-        throw new Error("This account is not an admin account.");
-      }
-
-      onLogin(result);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to login.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const setup = async (event: FormEvent) => {
-    event.preventDefault();
-    setError("");
-    setBusy(true);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setLoading(true);
 
     try {
-      const response = await fetch("/api/auth/setup", {
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -60,116 +40,107 @@ export default function AdminLoginPage({ onLogin, onNavigate }: Props) {
         body: JSON.stringify({
           username,
           password,
+          role: ROLES.ADMIN,
         }),
       });
 
-      const data = (await response.json()) as LoginResponse & { error?: string };
+      const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Setup failed.");
+        throw new Error(
+          data.message || "লগইন ব্যর্থ হয়েছে। ইউজারনেম ও পাসওয়ার্ড পরীক্ষা করুন।"
+        );
       }
 
       onLogin(data);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Setup failed.",
-      );
+    } catch (err: any) {
+      setError(err.message || "সার্ভারে যোগাযোগ করতে সমস্যা হচ্ছে।");
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-surface px-4">
-      <div className="w-full max-w-md rounded-md border border-border bg-background p-6 shadow-sm">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Nerzov</h1>
-          <p className="mt-1 text-sm text-muted">
-            {setupMode ? "Create the first Admin account" : "Admin Login"}
+    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4 py-12 sm:px-6 lg:px-8">
+      <div className="w-full max-w-md space-y-8 rounded-xl bg-white p-8 shadow-lg border border-gray-100">
+        <div>
+          <h2 className="mt-2 text-center text-3xl font-extrabold text-gray-900">
+            অ্যাডমিন পোর্টাল
+          </h2>
+          <p className="mt-2 text-center text-sm text-gray-600">
+            প্যানেলে প্রবেশ করতে আপনার তথ্যাদি দিয়ে লগইন করুন
           </p>
         </div>
 
-        <form
-          onSubmit={setupMode ? setup : submit}
-          className="space-y-4"
-        >
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Username
-            </label>
-            <input
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              required
-              minLength={3}
-              className="w-full rounded-md border border-border px-3 py-2 outline-none focus:border-accent"
-              autoComplete="username"
-            />
+        {error && (
+          <div className="rounded-md bg-red-50 p-4 border border-red-200 text-sm text-red-700">
+            {error}
           </div>
+        )}
 
-          <div>
-            <label className="mb-1 block text-sm font-medium">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={8}
-              className="w-full rounded-md border border-border px-3 py-2 outline-none focus:border-accent"
-              autoComplete={
-                setupMode ? "new-password" : "current-password"
-              }
-            />
-          </div>
-
-          {error && (
-            <div className="rounded-md bg-danger px-3 py-2 text-sm text-white">
-              {error}
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <div className="space-y-4 rounded-md shadow-sm">
+            <div>
+              <label
+                htmlFor="username"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                ইউজারনেম / ইমেইল
+              </label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                required
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="relative block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:z-10 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                placeholder="আপনার ইউজারনেম লিখুন"
+              />
             </div>
-          )}
+            <div>
+              <label
+                htmlFor="password"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
+                পাসওয়ার্ড
+              </label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="relative block w-full rounded-lg border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-400 focus:z-10 focus:border-blue-500 focus:outline-none focus:ring-blue-500 sm:text-sm"
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
 
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-md bg-primary px-4 py-2 text-white disabled:opacity-50"
-          >
-            {busy
-              ? "Please wait..."
-              : setupMode
-                ? "Create Admin"
-                : "Login"}
-          </button>
+          <div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="group relative flex w-full justify-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 transition-colors"
+            >
+              {loading ? "লগইন হচ্ছে..." : "লগইন করুন"}
+            </button>
+          </div>
         </form>
 
-        <div className="mt-4 flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setSetupMode((value) => !value);
-              setError("");
-            }}
-            className="text-left text-sm text-accent"
-          >
-            {setupMode
-              ? "Already have an account? Login"
-              : "First deployment? Create Admin"}
-          </button>
-
-          {onNavigate && (
+        {onNavigate && (
+          <div className="text-center pt-4 border-t border-gray-100">
             <button
               type="button"
               onClick={() => onNavigate("/client/login")}
-              className="text-left text-sm text-muted hover:underline"
+              className="text-sm font-medium text-blue-600 hover:text-blue-500"
             >
-              Are you a Client? Login here →
+              ক্লায়েন্ট লগইন পেজে যেতে এখানে ক্লিক করুন →
             </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
-}
+              }
