@@ -12,9 +12,10 @@ interface Props {
       clientId: string | null;
     };
   }) => void;
+  onNavigate?: (path: string) => void;
 }
 
-export default function ClientLoginPage({ onLogin }: Props) {
+export default function ClientLoginPage({ onLogin, onNavigate }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -94,6 +95,16 @@ export default function ClientLoginPage({ onLogin }: Props) {
             {busy ? "Please wait..." : "Login"}
           </button>
         </form>
+
+        {onNavigate && (
+          <button
+            type="button"
+            onClick={() => onNavigate("/admin/login")}
+            className="mt-4 block w-full text-center text-sm text-muted hover:underline"
+          >
+            ← Admin Login
+          </button>
+        )}
       </div>
     </div>
   );
