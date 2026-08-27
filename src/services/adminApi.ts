@@ -19,7 +19,7 @@ async function request<T>(
     },
   });
 
-  const data = await response.json();
+  const data = (await response.json()) as T & { error?: string };
 
   if (!response.ok) {
     throw new Error(data.error || "Request failed.");
