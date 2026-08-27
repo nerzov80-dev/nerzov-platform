@@ -38,8 +38,8 @@ export default function ClientLoginPage({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          username: email,
           email: email,
+          username: email,
           password,
           role: ROLES.CLIENT,
         }),
