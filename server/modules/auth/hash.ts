@@ -1,7 +1,6 @@
 const PBKDF2_ITERATIONS = 100_000;
-const HASH_ALGORITHM = "SHA-256";
-const SALT_BYTES = 16;
-const HASH_BYTES = 32;
+const HASH_LENGTH = 32;
+const SALT_LENGTH = 16;
 
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
@@ -24,24 +23,18 @@ function base64ToBytes(value: string): Uint8Array {
   return bytes;
 }
 
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const buffer = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(buffer).set(bytes);
-  return buffer;
-}
-
 function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) {
     return false;
   }
 
-  let difference = 0;
+  let result = 0;
 
   for (let i = 0; i < a.length; i += 1) {
-    difference |= a[i] ^ b[i];
+    result |= a[i] ^ b[i];
   }
 
-  return difference === 0;
+  return result === 0;
 }
 
 async function deriveKey(
@@ -50,9 +43,9 @@ async function deriveKey(
 ): Promise<ArrayBuffer> {
   const passwordBytes = new TextEncoder().encode(password);
 
-  const passwordKey = await crypto.subtle.importKey(
+  const keyMaterial = await crypto.subtle.importKey(
     "raw",
-    toArrayBuffer(passwordBytes),
+    passwordBytes.buffer,
     "PBKDF2",
     false,
     ["deriveBits"],
@@ -61,31 +54,25 @@ async function deriveKey(
   return crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
-      salt: toArrayBuffer(salt),
+      salt: salt.buffer,
       iterations: PBKDF2_ITERATIONS,
-      hash: HASH_ALGORITHM,
+      hash: "SHA-256",
     },
-    passwordKey,
-    HASH_BYTES * 8,
+    keyMaterial,
+    HASH_LENGTH * 8,
   );
 }
 
 export async function hashPassword(password: string): Promise<string> {
-  if (!password) {
+  if (!password || password.length < 1) {
     throw new Error("Password is required");
   }
 
-  const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
+  const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
   const derivedBits = await deriveKey(password, salt);
   const hash = new Uint8Array(derivedBits);
 
-  return [
-    "pbkdf2",
-    HASH_ALGORITHM.toLowerCase(),
-    PBKDF2_ITERATIONS.toString(),
-    bytesToBase64(salt),
-    bytesToBase64(hash),
-  ].join("$");
+  return `${bytesToBase64(salt)}.${bytesToBase64(hash)}`;
 }
 
 export async function verifyPassword(
@@ -96,52 +83,38 @@ export async function verifyPassword(
     return false;
   }
 
-  const parts = storedHash.split("$");
+  const parts = storedHash.split(".");
 
-  if (parts.length !== 5) {
+  if (parts.length !== 2) {
     return false;
   }
 
-  const [scheme, algorithm, iterationsString, saltBase64, hashBase64] = parts;
+  try {
+    const salt = base64ToBytes(parts[0]);
+    const expectedHash = base64ToBytes(parts[1]);
 
-  if (
-    scheme !== "pbkdf2" ||
-    algorithm !== HASH_ALGORITHM.toLowerCase()
-  ) {
+    const derivedBits = await deriveKey(password, salt);
+    const actualHash = new Uint8Array(derivedBits);
+
+    return constantTimeEqual(actualHash, expectedHash);
+  } catch {
     return false;
   }
+}
 
-  const iterations = Number(iterationsString);
+export async function generatePassword(length = 16): Promise<string> {
+  const safeLength = Math.max(12, Math.min(length, 64));
 
-  if (!Number.isInteger(iterations) || iterations <= 0) {
-    return false;
+  const alphabet =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
+
+  const random = crypto.getRandomValues(new Uint32Array(safeLength));
+
+  let password = "";
+
+  for (let i = 0; i < safeLength; i += 1) {
+    password += alphabet[random[i] % alphabet.length];
   }
 
-  const salt = base64ToBytes(saltBase64);
-  const expectedHash = base64ToBytes(hashBase64);
-
-  const passwordBytes = new TextEncoder().encode(password);
-
-  const passwordKey = await crypto.subtle.importKey(
-    "raw",
-    toArrayBuffer(passwordBytes),
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
-
-  const derivedBits = await crypto.subtle.deriveBits(
-    {
-      name: "PBKDF2",
-      salt: toArrayBuffer(salt),
-      iterations,
-      hash: algorithm.toUpperCase(),
-    },
-    passwordKey,
-    expectedHash.length * 8,
-  );
-
-  const actualHash = new Uint8Array(derivedBits);
-
-  return constantTimeEqual(actualHash, expectedHash);
-    }
+  return password;
+}
