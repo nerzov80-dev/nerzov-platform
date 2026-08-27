@@ -45,7 +45,7 @@ async function deriveKey(
 
   const keyMaterial = await crypto.subtle.importKey(
     "raw",
-    passwordBytes.buffer,
+    passwordBytes,
     "PBKDF2",
     false,
     ["deriveBits"],
@@ -54,7 +54,7 @@ async function deriveKey(
   return crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
-      salt: salt.buffer,
+      salt: salt,
       iterations: PBKDF2_ITERATIONS,
       hash: "SHA-256",
     },
