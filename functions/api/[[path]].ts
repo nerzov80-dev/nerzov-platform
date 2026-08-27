@@ -51,11 +51,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
       const hashedPassword = await hashPassword(password);
 
-      // Verify User from DB
+      // Verify User from DB using username (which holds email)
       const user = (await env.DB.prepare(
-        "SELECT * FROM users WHERE (username = ? OR email = ?) AND password = ?"
+        "SELECT * FROM users WHERE username = ? AND password = ?"
       )
-        .bind(identifier, identifier, hashedPassword)
+        .bind(identifier, hashedPassword)
         .first()) as any;
 
       if (!user) {
@@ -77,7 +77,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           token: `token-${user.id}-${Date.now()}`,
           user: {
             id: user.id,
-            username: user.username || user.email,
+            username: user.username,
             role: user.role,
             clientId: user.client_id || null,
           },
@@ -116,9 +116,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
       // Check duplicate user
       const existingUser = await env.DB.prepare(
-        "SELECT id FROM users WHERE username = ? OR email = ?"
+        "SELECT id FROM users WHERE username = ?"
       )
-        .bind(email, email)
+        .bind(email)
         .first();
 
       if (existingUser) {
@@ -133,18 +133,18 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       const hashedPassword = await hashPassword(password);
       const createdAt = new Date().toISOString();
 
-      // Save into clients table
+      // 1. Save profile into clients table
       await env.DB.prepare(
         "INSERT INTO clients (id, business_name, email, phone, created_at) VALUES (?, ?, ?, ?, ?)"
       )
         .bind(clientId, businessName, email, phone || "", createdAt)
         .run();
 
-      // Save into users table for authentication
+      // 2. Save login details into users table (username holds email)
       await env.DB.prepare(
-        "INSERT INTO users (id, username, email, password, role, client_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO users (id, username, password, role, client_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
       )
-        .bind(userId, email, email, hashedPassword, "CLIENT", clientId, createdAt)
+        .bind(userId, email, hashedPassword, "CLIENT", clientId, createdAt)
         .run();
 
       return new Response(
