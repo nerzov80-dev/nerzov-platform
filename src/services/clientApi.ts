@@ -9,7 +9,7 @@ export async function getClientDashboard(
     },
   });
 
-  const data = await response.json();
+  const data = (await response.json()) as ClientDashboardData & { error?: string };
 
   if (!response.ok) {
     throw new Error(
