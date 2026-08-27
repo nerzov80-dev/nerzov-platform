@@ -241,7 +241,7 @@ export default function AdminClientsPage({
 
           <ClientsList
             clients={clients}
-            onEdit={(client) => {
+            onEdit={(client: Client) => {
               setEditing(client);
               setForm({
                 businessName: client.businessName,
@@ -249,7 +249,7 @@ export default function AdminClientsPage({
                 email: client.email || "",
               });
             }}
-            onCreateLandingPage={(client) => {
+            onCreateLandingPage={(client: Client) => {
               setLandingClient(client);
               setSlug(
                 `${client.businessName
@@ -334,4 +334,4 @@ export default function AdminClientsPage({
       )}
     </AdminLayout>
   );
-    }
+}
