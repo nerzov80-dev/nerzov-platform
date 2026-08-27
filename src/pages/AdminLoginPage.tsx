@@ -12,9 +12,10 @@ interface Props {
       clientId: string | null;
     };
   }) => void;
+  onNavigate?: (path: string) => void;
 }
 
-export default function AdminLoginPage({ onLogin }: Props) {
+export default function AdminLoginPage({ onLogin, onNavigate }: Props) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [setupMode, setSetupMode] = useState(false);
@@ -144,18 +145,30 @@ export default function AdminLoginPage({ onLogin }: Props) {
           </button>
         </form>
 
-        <button
-          type="button"
-          onClick={() => {
-            setSetupMode((value) => !value);
-            setError("");
-          }}
-          className="mt-4 text-sm text-accent"
-        >
-          {setupMode
-            ? "Already have an account? Login"
-            : "First deployment? Create Admin"}
-        </button>
+        <div className="mt-4 flex flex-col gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setSetupMode((value) => !value);
+              setError("");
+            }}
+            className="text-left text-sm text-accent"
+          >
+            {setupMode
+              ? "Already have an account? Login"
+              : "First deployment? Create Admin"}
+          </button>
+
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate("/client/login")}
+              className="text-left text-sm text-muted hover:underline"
+            >
+              Are you a Client? Login here →
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
