@@ -44,15 +44,15 @@ export default function AdminLoginPage({
         }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as any;
 
       if (!response.ok) {
         throw new Error(
-          data.message || "লগইন ব্যর্থ হয়েছে। ইউজারনেম ও পাসওয়ার্ড পরীক্ষা করুন।"
+          data?.message || "লগইন ব্যর্থ হয়েছে। ইউজারনেম ও পাসওয়ার্ড পরীক্ষা করুন।"
         );
       }
 
-      onLogin(data);
+      onLogin(data as StoredAuth);
     } catch (err: any) {
       setError(err.message || "সার্ভারে যোগাযোগ করতে সমস্যা হচ্ছে।");
     } finally {
@@ -143,4 +143,4 @@ export default function AdminLoginPage({
       </div>
     </div>
   );
-              }
+          }
