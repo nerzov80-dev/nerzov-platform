@@ -29,7 +29,7 @@ export async function createClient(
   const username =
     `${usernameBase}_${suffix}`;
 
-  const password = generatePassword();
+  const password = await generatePassword();
   const passwordHash =
     await hashPassword(password);
 
