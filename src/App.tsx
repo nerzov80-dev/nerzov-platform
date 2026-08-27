@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { AUTH_STORAGE_KEY, ROLES } from "../shared/constants";
-import type { UserRole } from "../shared/constants";
+import { AUTH_STORAGE_KEY, ROLES } from "./shared/constants";
+import type { UserRole } from "./shared/constants";
 
 import AdminLoginPage from "./pages/AdminLoginPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
@@ -68,9 +68,9 @@ export default function App() {
     return (
       <div className="min-h-screen bg-background">
         {path === "/client/login" ? (
-          <ClientLoginPage onLogin={handleLogin} />
+          <ClientLoginPage onLogin={handleLogin} onNavigate={navigate} />
         ) : (
-          <AdminLoginPage onLogin={handleLogin} />
+          <AdminLoginPage onLogin={handleLogin} onNavigate={navigate} />
         )}
       </div>
     );
