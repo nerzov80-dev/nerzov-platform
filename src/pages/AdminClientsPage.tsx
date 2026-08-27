@@ -1,337 +1,253 @@
-import { FormEvent, useEffect, useState } from "react";
-import AdminLayout from "../components/layouts/AdminLayout";
-import ClientsList from "../components/admin/ClientsList";
-import {
-  createClient,
-  createLandingPage,
-  getClients,
-  updateClient,
-} from "../services/adminApi";
-import type {
-  Client,
-  CreateClientInput,
-  UpdateClientInput,
-} from "../../shared/types/client";
-import {
-  LANDING_PAGE_TEMPLATES,
-  type LandingPageTemplate,
-} from "../../shared/constants";
+import { useEffect, useState } from "react";
+import type { UserRole } from "../../shared/constants";
 
-interface Props {
-  auth: {
-    token: string;
+interface StoredAuth {
+  token: string;
+  user: {
+    id: string;
+    username: string;
+    role: UserRole;
+    clientId: string | null;
   };
-  onLogout: () => void;
-  onNavigate: (path: string) => void;
 }
 
-const emptyForm: CreateClientInput = {
-  businessName: "",
-  phone: "",
-  email: "",
-};
+interface Client {
+  id: string;
+  businessName: string;
+  email: string;
+  phone: string;
+  createdAt?: string;
+}
+
+interface AdminClientsPageProps {
+  auth: StoredAuth;
+  onLogout: () => void;
+  onNavigate: (to: string) => void;
+}
 
 export default function AdminClientsPage({
   auth,
   onLogout,
   onNavigate,
-}: Props) {
+}: AdminClientsPageProps) {
   const [clients, setClients] = useState<Client[]>([]);
-  const [form, setForm] = useState<CreateClientInput>(emptyForm);
-  const [editing, setEditing] = useState<Client | null>(null);
-  const [template, setTemplate] =
-    useState<LandingPageTemplate>("template1");
-  const [slug, setSlug] = useState("");
-  const [landingClient, setLandingClient] =
-    useState<Client | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  // New Client Form States
+  const [businessName, setBusinessName] = useState("");
+  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
+  const [password, setPassword] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
 
-  const load = async () => {
+  const fetchClients = async () => {
     try {
-      setClients(await getClients(auth.token));
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to load clients.",
-      );
+      const res = await fetch("/api/admin/clients", {
+        headers: { Authorization: `Bearer ${auth.token}` },
+      });
+      const data = (await res.json()) as any;
+      if (!res.ok) throw new Error(data?.message || "ক্লায়েন্ট তালিকা আনা সম্ভব হয়নি।");
+      setClients(data.clients || []);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
-  }, [auth.token]);
+    fetchClients();
+  }, []);
 
-  const submitClient = async (event: FormEvent) => {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    setBusy(true);
-
-    try {
-      if (editing) {
-        const input: UpdateClientInput = {
-          businessName: form.businessName,
-          phone: form.phone,
-          email: form.email,
-          isActive: editing.isActive,
-        };
-
-        await updateClient(auth.token, editing.id, input);
-        setMessage("Client updated successfully.");
-      } else {
-        const result = await createClient(auth.token, form);
-        setMessage(
-          `Client created. Username: ${result.credentials.username} | Password: ${result.credentials.password}`,
-        );
-      }
-
-      setForm(emptyForm);
-      setEditing(null);
-      await load();
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to save client.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const submitLandingPage = async (event: FormEvent) => {
-    event.preventDefault();
-
-    if (!landingClient) return;
-
-    setError("");
-    setMessage("");
-    setBusy(true);
+  const handleCreateClient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError(null);
+    setCreating(true);
 
     try {
-      await createLandingPage(auth.token, {
-        clientId: landingClient.id,
-        template,
-        slug,
+      const res = await fetch("/api/admin/clients", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${auth.token}`,
+        },
+        body: JSON.stringify({
+          businessName,
+          email,
+          phone,
+          password,
+        }),
       });
 
-      setMessage("Draft Landing Page created successfully.");
-      setLandingClient(null);
-      setSlug("");
-      setTemplate("template1");
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Unable to create Landing Page.",
-      );
+      const data = (await res.json()) as any;
+      if (!res.ok) throw new Error(data?.message || "ক্লায়েন্ট তৈরি করতে সমস্যা হয়েছে।");
+
+      // Reset Form
+      setBusinessName("");
+      setEmail("");
+      setPhone("");
+      setPassword("");
+      fetchClients();
+    } catch (err: any) {
+      setFormError(err.message);
     } finally {
-      setBusy(false);
+      setCreating(false);
     }
   };
 
   return (
-    <AdminLayout
-      title="Client Management"
-      onLogout={onLogout}
-      onNavigate={onNavigate}
-    >
-      <div className="grid gap-8 lg:grid-cols-[380px_1fr]">
-        <section className="rounded-md border border-border bg-background p-5 shadow-sm">
-          <h2 className="text-lg font-semibold">
-            {editing ? "Edit Client" : "Create Client"}
+    <div className="min-h-screen bg-gray-100">
+      {/* Navbar */}
+      <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+        <div className="flex items-center space-x-6">
+          <h1 className="text-xl font-bold text-gray-800">অ্যাডমিন প্যানেল</h1>
+          <button
+            onClick={() => onNavigate("/admin/dashboard")}
+            className="text-sm font-medium text-gray-600 hover:text-blue-600"
+          >
+            ড্যাশবোর্ড
+          </button>
+          <button
+            onClick={() => onNavigate("/admin/clients")}
+            className="text-sm font-semibold text-blue-600 border-b-2 border-blue-600 pb-1"
+          >
+            ক্লায়েন্ট তালিকা
+          </button>
+        </div>
+        <button
+          onClick={onLogout}
+          className="text-sm font-medium text-red-600 hover:text-red-800"
+        >
+          লগআউট
+        </button>
+      </nav>
+
+      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-8">
+        {/* Create Client Form */}
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+          <h2 className="text-lg font-bold text-gray-900 mb-4">
+            নতুন ক্লায়েন্ট যোগ করুন
           </h2>
 
-          <form
-            onSubmit={submitClient}
-            className="mt-5 space-y-4"
-          >
+          {formError && (
+            <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-200">
+              {formError}
+            </div>
+          )}
+
+          <form onSubmit={handleCreateClient} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div>
-              <label className="mb-1 block text-sm font-medium">
-                Business Name
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                বিজনেস নেম
               </label>
               <input
-                value={form.businessName}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    businessName: e.target.value,
-                  })
-                }
+                type="text"
                 required
-                className="w-full rounded-md border border-border px-3 py-2"
+                value={businessName}
+                onChange={(e) => setBusinessName(e.target.value)}
+                placeholder="ব্যবসার নাম"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 
             <div>
-              <label className="mb-1 block text-sm font-medium">
-                Phone
-              </label>
-              <input
-                value={form.phone}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    phone: e.target.value,
-                  })
-                }
-                required
-                className="w-full rounded-md border border-border px-3 py-2"
-              />
-            </div>
-
-            <div>
-              <label className="mb-1 block text-sm font-medium">
-                Email
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                ইমেইল (লগইন আইডি)
               </label>
               <input
                 type="email"
-                value={form.email || ""}
-                onChange={(e) =>
-                  setForm({
-                    ...form,
-                    email: e.target.value,
-                  })
-                }
-                className="w-full rounded-md border border-border px-3 py-2"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="client@example.com"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 
-            <div className="flex gap-2">
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                ফোন নম্বর
+              </label>
+              <input
+                type="text"
+                required
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="01700000000"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 mb-1">
+                লগইন পাসওয়ার্ড
+              </label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
               <button
                 type="submit"
-                disabled={busy}
-                className="rounded-md bg-primary px-4 py-2 text-white disabled:opacity-50"
+                disabled={creating}
+                className="px-5 py-2 bg-blue-600 text-white font-medium text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                {editing ? "Update" : "Create"}
+                {creating ? "তৈরি হচ্ছে..." : "ক্লায়েন্ট তৈরি করুন"}
               </button>
-
-              {editing && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setEditing(null);
-                    setForm(emptyForm);
-                  }}
-                  className="rounded-md border border-border px-4 py-2"
-                >
-                  Cancel
-                </button>
-              )}
             </div>
           </form>
-        </section>
-
-        <section>
-          {message && (
-            <div className="mb-4 rounded-md bg-success px-4 py-3 text-white">
-              {message}
-            </div>
-          )}
-
-          {error && (
-            <div className="mb-4 rounded-md bg-danger px-4 py-3 text-white">
-              {error}
-            </div>
-          )}
-
-          <ClientsList
-            clients={clients}
-            onEdit={(client: Client) => {
-              setEditing(client);
-              setForm({
-                businessName: client.businessName,
-                phone: client.phone,
-                email: client.email || "",
-              });
-            }}
-            onCreateLandingPage={(client: Client) => {
-              setLandingClient(client);
-              setSlug(
-                `${client.businessName
-                  .toLowerCase()
-                  .replace(/[^a-z0-9]+/g, "-")
-                  .replace(/^-|-$/g, "")}-landing`,
-              );
-            }}
-          />
-        </section>
-      </div>
-
-      {landingClient && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-md rounded-md bg-background p-6 shadow-sm">
-            <h2 className="text-lg font-semibold">
-              Create Landing Page
-            </h2>
-
-            <p className="mt-1 text-sm text-muted">
-              {landingClient.businessName}
-            </p>
-
-            <form
-              onSubmit={submitLandingPage}
-              className="mt-5 space-y-4"
-            >
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Template
-                </label>
-                <select
-                  value={template}
-                  onChange={(e) =>
-                    setTemplate(
-                      e.target.value as LandingPageTemplate,
-                    )
-                  }
-                  className="w-full rounded-md border border-border px-3 py-2"
-                >
-                  {LANDING_PAGE_TEMPLATES.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="mb-1 block text-sm font-medium">
-                  Slug
-                </label>
-                <input
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  required
-                  pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
-                  className="w-full rounded-md border border-border px-3 py-2"
-                />
-              </div>
-
-              <div className="flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setLandingClient(null)}
-                  className="rounded-md border border-border px-4 py-2"
-                >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="rounded-md bg-accent px-4 py-2 text-white disabled:opacity-50"
-                >
-                  Create Draft
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
-      )}
-    </AdminLayout>
+
+        {/* Client List Table */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h2 className="text-lg font-bold text-gray-900">ক্লায়েন্ট তালিকা</h2>
+          </div>
+
+          {loading ? (
+            <div className="p-6 text-center text-gray-500 text-sm">লোড হচ্ছে...</div>
+          ) : error ? (
+            <div className="p-6 text-center text-red-600 text-sm">{error}</div>
+          ) : clients.length === 0 ? (
+            <div className="p-6 text-center text-gray-500 text-sm">
+              কোনো ক্লায়েন্ট পাওয়া যায়নি।
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-gray-600">
+                <thead className="bg-gray-50 text-gray-700 uppercase text-xs font-semibold">
+                  <tr>
+                    <th className="px-6 py-3">ব্যবসার নাম</th>
+                    <th className="px-6 py-3">ইমেইল</th>
+                    <th className="px-6 py-3">ফোন নম্বর</th>
+                    <th className="px-6 py-3">তৈরির তারিখ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {clients.map((c) => (
+                    <tr key={c.id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 font-medium text-gray-900">{c.businessName}</td>
+                      <td className="px-6 py-4">{c.email}</td>
+                      <td className="px-6 py-4">{c.phone}</td>
+                      <td className="px-6 py-4">
+                        {c.createdAt ? new Date(c.createdAt).toLocaleDateString() : "N/A"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
-}
+              }
