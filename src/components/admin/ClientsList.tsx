@@ -1,4 +1,4 @@
-import type { Client } from "../../shared/types/client";
+import type { Client } from "../../../shared/types/client";
 
 interface ClientsListProps {
   clients: Client[];
