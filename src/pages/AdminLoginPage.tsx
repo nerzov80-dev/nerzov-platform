@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { login } from "../services/authApi";
+import { login, type LoginResponse } from "../services/authApi";
 import type { UserRole } from "../../shared/constants";
 
 interface Props {
@@ -62,7 +62,7 @@ export default function AdminLoginPage({ onLogin }: Props) {
         }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as LoginResponse & { error?: string };
 
       if (!response.ok) {
         throw new Error(data.error || "Setup failed.");
@@ -159,4 +159,4 @@ export default function AdminLoginPage({ onLogin }: Props) {
       </div>
     </div>
   );
-    }
+}
