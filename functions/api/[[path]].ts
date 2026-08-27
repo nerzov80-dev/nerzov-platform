@@ -5,7 +5,7 @@ interface Env {
 // Password Hashing Helper (SHA-256)
 async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(password);
+  const data = encoder.encode(password.trim());
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   return Array.from(new Uint8Array(hashBuffer))
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -16,7 +16,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
   const url = new URL(request.url);
 
-  // Handle CORS Preflight
   if (request.method === "OPTIONS") {
     return new Response(null, {
       headers: {
@@ -38,36 +37,43 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     // -------------------------------------------------------------
     if (url.pathname === "/api/auth/login" && request.method === "POST") {
       const body = (await request.json()) as any;
-      const identifier = body.email || body.username;
-      const password = body.password;
-      const reqRole = body.role;
+      const rawIdentifier = (body.email || body.username || "").trim().toLowerCase();
+      const rawPassword = body.password || "";
+      const reqRole = (body.role || "").trim().toUpperCase();
 
-      if (!identifier || !password) {
+      if (!rawIdentifier || !rawPassword) {
         return new Response(
-          JSON.stringify({ message: "ইমেইল/ইউজারনেম এবং পাসওয়ার্ড প্রদান করুন।" }),
+          JSON.stringify({ message: "ইমেইল এবং পাসওয়ার্ড প্রদান করুন।" }),
           { status: 400, headers: jsonHeaders }
         );
       }
 
-      const hashedPassword = await hashPassword(password);
+      if (!env.DB) {
+        return new Response(
+          JSON.stringify({ message: "D1 Database binding (DB) পাওয়া যায়নি। রি-ডিপ্লয় করুন।" }),
+          { status: 500, headers: jsonHeaders }
+        );
+      }
 
-      // Verify User from DB using username (which holds email)
+      const hashedPassword = await hashPassword(rawPassword);
+
+      // Check BOTH username AND email columns, accepting hashed or plain password
       const user = (await env.DB.prepare(
-        "SELECT * FROM users WHERE username = ? AND password = ?"
+        "SELECT * FROM users WHERE (LOWER(username) = ? OR LOWER(email) = ?) AND (password = ? OR password = ?)"
       )
-        .bind(identifier, hashedPassword)
+        .bind(rawIdentifier, rawIdentifier, hashedPassword, rawPassword.trim())
         .first()) as any;
 
       if (!user) {
         return new Response(
-          JSON.stringify({ message: "ইমেইল/ইউজারনেম বা পাসওয়ার্ড সঠিক নয়।" }),
+          JSON.stringify({ message: "ইমেইল বা পাসওয়ার্ড সঠিক নয়।" }),
           { status: 401, headers: jsonHeaders }
         );
       }
 
-      if (reqRole && user.role !== reqRole) {
+      if (reqRole && user.role.toUpperCase() !== reqRole) {
         return new Response(
-          JSON.stringify({ message: "আপনার রোল (Role) এই পোর্টালে প্রবেশের জন্য অনুমোদিত নয়।" }),
+          JSON.stringify({ message: `আপনার অ্যাকাউন্টটি ${user.role} রোল-এর, কিন্তু আপনি ${reqRole} পোর্টালে লগইন করার চেষ্টা করছেন।` }),
           { status: 403, headers: jsonHeaders }
         );
       }
@@ -87,9 +93,16 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
 
     // -------------------------------------------------------------
-    // 2. GET ALL CLIENTS (Admin Panel)
+    // 2. GET ALL CLIENTS
     // -------------------------------------------------------------
     if (url.pathname === "/api/admin/clients" && request.method === "GET") {
+      if (!env.DB) {
+        return new Response(
+          JSON.stringify({ message: "D1 Database binding (DB) পাওয়া যায়নি।" }),
+          { status: 500, headers: jsonHeaders }
+        );
+      }
+
       const { results } = await env.DB.prepare(
         "SELECT id, business_name as businessName, email, phone, created_at as createdAt FROM clients ORDER BY created_at DESC"
       ).all();
@@ -101,24 +114,34 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
 
     // -------------------------------------------------------------
-    // 3. CREATE NEW CLIENT & USER (Admin Panel)
+    // 3. CREATE NEW CLIENT & USER
     // -------------------------------------------------------------
     if (url.pathname === "/api/admin/clients" && request.method === "POST") {
       const body = (await request.json()) as any;
       const { businessName, email, phone, password } = body;
 
-      if (!businessName || !email || !password) {
+      const cleanEmail = (email || "").trim().toLowerCase();
+      const cleanPassword = (password || "").trim();
+
+      if (!businessName || !cleanEmail || !cleanPassword) {
         return new Response(
           JSON.stringify({ message: "বিজনেস নেম, ইমেইল এবং পাসওয়ার্ড আবশ্যক।" }),
           { status: 400, headers: jsonHeaders }
         );
       }
 
-      // Check duplicate user
+      if (!env.DB) {
+        return new Response(
+          JSON.stringify({ message: "D1 Database binding (DB) পাওয়া যায়নি। রি-ডিপ্লয় করুন।" }),
+          { status: 500, headers: jsonHeaders }
+        );
+      }
+
+      // Duplicate Check across username and email
       const existingUser = await env.DB.prepare(
-        "SELECT id FROM users WHERE username = ?"
+        "SELECT id FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?"
       )
-        .bind(email)
+        .bind(cleanEmail, cleanEmail)
         .first();
 
       if (existingUser) {
@@ -130,21 +153,21 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
       const userId = crypto.randomUUID();
       const clientId = crypto.randomUUID();
-      const hashedPassword = await hashPassword(password);
+      const hashedPassword = await hashPassword(cleanPassword);
       const createdAt = new Date().toISOString();
 
-      // 1. Save profile into clients table
+      // Save Client Info
       await env.DB.prepare(
         "INSERT INTO clients (id, business_name, email, phone, created_at) VALUES (?, ?, ?, ?, ?)"
       )
-        .bind(clientId, businessName, email, phone || "", createdAt)
+        .bind(clientId, businessName.trim(), cleanEmail, phone ? phone.trim() : "", createdAt)
         .run();
 
-      // 2. Save login details into users table (username holds email)
+      // Save User Credentials (storing email in both username & email columns)
       await env.DB.prepare(
-        "INSERT INTO users (id, username, password, role, client_id, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+        "INSERT INTO users (id, username, email, password, role, client_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
       )
-        .bind(userId, email, hashedPassword, "CLIENT", clientId, createdAt)
+        .bind(userId, cleanEmail, cleanEmail, hashedPassword, "CLIENT", clientId, createdAt)
         .run();
 
       return new Response(
@@ -159,7 +182,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     );
   } catch (err: any) {
     return new Response(
-      JSON.stringify({ message: err.message || "Internal Server Error" }),
+      JSON.stringify({ message: `Server Error: ${err.message || err.toString()}` }),
       { status: 500, headers: jsonHeaders }
     );
   }
