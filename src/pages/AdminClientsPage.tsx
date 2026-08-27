@@ -34,7 +34,6 @@ export default function AdminClientsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // New Client Form States
   const [businessName, setBusinessName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -84,7 +83,6 @@ export default function AdminClientsPage({
       const data = (await res.json()) as any;
       if (!res.ok) throw new Error(data?.message || "ক্লায়েন্ট তৈরি করতে সমস্যা হয়েছে।");
 
-      // Reset Form
       setBusinessName("");
       setEmail("");
       setPhone("");
@@ -99,7 +97,6 @@ export default function AdminClientsPage({
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* Navbar */}
       <nav className="bg-white border-b border-gray-200 px-6 py-4 flex justify-between items-center">
         <div className="flex items-center space-x-6">
           <h1 className="text-xl font-bold text-gray-800">অ্যাডমিন প্যানেল</h1>
@@ -125,7 +122,6 @@ export default function AdminClientsPage({
       </nav>
 
       <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8 space-y-8">
-        {/* Create Client Form */}
         <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
           <h2 className="text-lg font-bold text-gray-900 mb-4">
             নতুন ক্লায়েন্ট যোগ করুন
@@ -206,7 +202,6 @@ export default function AdminClientsPage({
           </form>
         </div>
 
-        {/* Client List Table */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-lg font-bold text-gray-900">ক্লায়েন্ট তালিকা</h2>
@@ -250,4 +245,4 @@ export default function AdminClientsPage({
       </div>
     </div>
   );
-              }
+}
