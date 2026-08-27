@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { AUTH_STORAGE_KEY, ROLES } from "./shared/constants";
-import type { UserRole } from "./shared/constants";
+import { AUTH_STORAGE_KEY, ROLES } from "../shared/constants";
+import type { UserRole } from "../shared/constants";
 
 import AdminLoginPage from "./pages/AdminLoginPage";
 import AdminDashboardPage from "./pages/AdminDashboardPage";
