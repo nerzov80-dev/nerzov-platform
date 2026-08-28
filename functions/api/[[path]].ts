@@ -2,11 +2,20 @@ interface Env {
   DB: D1Database;
 }
 
+// Password Hashing Helper (SHA-256)
+async function hashPassword(password: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password.trim());
+  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export const onRequest: PagesFunction<Env> = async (context) => {
   const { request, env } = context;
   const url = new URL(request.url);
 
-  // CORS Headers
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -20,50 +29,55 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   try {
     // -------------------------------------------------------------
-    // 1. LOGIN ENDPOINT (Handles /api/auth/login, /api/login, etc.)
+    // 1. AUTH LOGIN (Dynamic Support for ADMIN & CLIENT)
     // -------------------------------------------------------------
     if (url.pathname.includes("/login") && request.method === "POST") {
       const body = (await request.json().catch(() => ({}))) as any;
-      const inputEmail = (body.email || body.username || "").trim().toLowerCase();
+      const inputIdentifier = (body.email || body.username || "").trim().toLowerCase();
+      const inputPassword = (body.password || "").trim();
+      const requestedRole = (body.role || "").trim().toUpperCase();
 
-      // Default client profile data fallback
-      let userData = {
-        id: "user_1",
-        username: inputEmail || "sh9145080@gmail.com",
-        email: inputEmail || "sh9145080@gmail.com",
-        role: "CLIENT",
-        client_id: "client_1"
-      };
+      if (!inputIdentifier) {
+        return new Response(
+          JSON.stringify({ message: "ইমেইল বা ইউজারনেম দিন।" }),
+          { status: 400, headers: corsHeaders }
+        );
+      }
 
-      // Query D1 Database if available
-      if (env.DB && inputEmail) {
-        const dbUser = await env.DB.prepare(
+      let userRole = requestedRole || "CLIENT";
+      let userId = "user_" + Date.now();
+      let clientId: string | null = null;
+      let matchedUser: any = null;
+
+      // Query D1 DB if available
+      if (env.DB) {
+        matchedUser = await env.DB.prepare(
           "SELECT * FROM users WHERE LOWER(username) = ? OR LOWER(email) = ?"
-        ).bind(inputEmail, inputEmail).first() as any;
+        ).bind(inputIdentifier, inputIdentifier).first() as any;
+      }
 
-        if (dbUser) {
-          userData = {
-            id: dbUser.id || "user_1",
-            username: dbUser.username || inputEmail,
-            email: dbUser.email || inputEmail,
-            role: (dbUser.role || "CLIENT").toUpperCase(),
-            client_id: dbUser.client_id || "client_1"
-          };
+      if (matchedUser) {
+        userRole = (matchedUser.role || userRole).toUpperCase();
+        userId = matchedUser.id || userId;
+        clientId = matchedUser.client_id || null;
+      } else {
+        // Fallback for Admin login if identifier has 'admin' or requestedRole is ADMIN
+        if (inputIdentifier.includes("admin") || requestedRole === "ADMIN") {
+          userRole = "ADMIN";
         }
       }
 
-      // Return 200 OK with formatted login session
       return new Response(
         JSON.stringify({
           success: true,
-          token: `token-${userData.id}-${Date.now()}`,
-          accessToken: `token-${userData.id}-${Date.now()}`,
+          token: `token-${userId}-${Date.now()}`,
+          accessToken: `token-${userId}-${Date.now()}`,
           user: {
-            id: userData.id,
-            username: userData.username,
-            email: userData.email,
-            role: userData.role,
-            clientId: userData.client_id,
+            id: userId,
+            username: inputIdentifier,
+            email: inputIdentifier,
+            role: userRole,
+            clientId: clientId,
           },
         }),
         { status: 200, headers: corsHeaders }
@@ -71,13 +85,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
 
     // -------------------------------------------------------------
-    // 2. CLIENTS MANAGEMENT API
+    // 2. CLIENTS MANAGEMENT API (Admin Panel)
     // -------------------------------------------------------------
     if (url.pathname.includes("/clients")) {
       if (request.method === "GET") {
         let clientsList: any[] = [];
         if (env.DB) {
-          const { results } = await env.DB.prepare("SELECT * FROM clients").all();
+          const { results } = await env.DB.prepare("SELECT * FROM clients ORDER BY created_at DESC").all();
           clientsList = results || [];
         }
         return new Response(JSON.stringify({ clients: clientsList }), { status: 200, headers: corsHeaders });
@@ -87,16 +101,21 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         const body = (await request.json().catch(() => ({}))) as any;
         const { businessName, email, phone, password } = body;
         
-        if (env.DB) {
+        const cleanEmail = (email || "").trim().toLowerCase();
+        const cleanPassword = (password || "123").trim();
+
+        if (env.DB && cleanEmail) {
           const clientId = crypto.randomUUID();
           const userId = crypto.randomUUID();
+          const hashedPassword = await hashPassword(cleanPassword);
+
           await env.DB.prepare(
             "INSERT INTO clients (id, business_name, email, phone, created_at) VALUES (?, ?, ?, ?, datetime('now'))"
-          ).bind(clientId, businessName || '', email || '', phone || '').run();
+          ).bind(clientId, businessName || '', cleanEmail, phone || '').run();
 
           await env.DB.prepare(
             "INSERT INTO users (id, username, email, password, role, client_id, created_at) VALUES (?, ?, ?, ?, 'CLIENT', ?, datetime('now'))"
-          ).bind(userId, email || '', email || '', password || '123', clientId).run();
+          ).bind(userId, cleanEmail, cleanEmail, hashedPassword, clientId).run();
         }
         return new Response(JSON.stringify({ success: true, message: "Client created successfully" }), { status: 201, headers: corsHeaders });
       }
